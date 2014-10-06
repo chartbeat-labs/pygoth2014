@@ -1,0 +1,49 @@
+INSTALL NOTES
+=============
+
+There's a Vagrantfile for building a VM. But it doesn't automatically
+setup PostgreSQL or install the FDW module for you. Below are notes
+for how to do that.
+
+sudo apt-get install postgresql libpq-dev postgresql-server-dev-9.3 python-setuptools python-virtualenv python-pip
+
+sudo pip install gitpython msgpack-python lmdb beautifulsoup requests
+
+
+Install Multicorn
+-----------------
+
+pgxn version has problems, install from git instead. Clone and do the
+`make && sudo make install` dance:
+
+https://github.com/Kozea/Multicorn
+
+
+Database Setup
+--------------
+
+Create FDW database and grant privs to vagrant user.
+
+vagrant@pygoth:~/temp/Multicorn$ sudo su - postgres
+postgres@pygoth:~$ psql
+psql (9.3.5)
+Type "help" for help.
+
+postgres=# create database pygoth;
+CREATE DATABASE
+postgres=# create user vagrant;
+CREATE ROLE
+postgres=# grant all privileges  on database pygoth to vagrant;
+GRANT
+
+
+Using pygoth database, create extension:
+
+CREATE EXTENSION multicorn;
+grant all privileges on foreign data wrapper multicorn to vagrant;
+
+
+Edit PostgreSQL so that it's got the right path to the Python code:
+
+sudo vi /etc/postgresql/9.3/main/environment
+add PYTHONPATH='/vagrant/'

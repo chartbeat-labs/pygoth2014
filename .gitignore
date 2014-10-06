@@ -1,0 +1,4 @@
+*~
+*.pyc
+access_log.gz
+.vagrant
