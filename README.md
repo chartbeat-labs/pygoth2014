@@ -1,9 +1,11 @@
-Bend Postgres to Your Pythonic Will
+Bend PostgreSQL to Your Pythonic Will
 ====
+
+by Wes Chow, CTO @ Chartbeat, @weschow
 
 I imagine it's difficult for those who have never given a talk to
 realize just how nerve racking and all consuming preparation can
-be. I'd given an internal company talk about a neat Postgres feature
+be. I'd given an internal company talk about a neat PostgreSQL feature
 called Foreign Data Wrappers, but when I set about presenting it at
 PyGotham 2014 I all of a sudden felt an urge to put together something
 much more epic and with a Big Insight.
@@ -24,9 +26,7 @@ So!
 We abandon SQL too quickly. Why? NoSQL folk believe:
 
   1. It's inflexible.
-
   2. It's slow.
-
   3. It doesn't scale to large amounts of data.
 
 But it's important to separate out issues of SQL-the-language with
@@ -34,15 +34,15 @@ SQL-the-implementation. If you do not have at least a cursory
 understanding of how data is organized on disk in a SQL server, you
 can't really make any of the above claims.
 
-So what we're going to do with Postgres and Python is separate out the
-storage details using a module called Multicorn and look at how
+So what we're going to do with PostgreSQL and Python is separate out
+the storage details using a module called Multicorn and look at how
 expressive SQL can be.
 
-What is Multicorn? Postgres provides a Foreign Data Wrapper API, which
-is C based and allows you to plug in arbitrary backends. Multicorn is
-a Foreign Data Wrapper implementation that embeds the Python
-interpreter and calls Python code. This allows you, then, to write
-your data backend in Python.
+What is Multicorn? PostgreSQL provides a Foreign Data Wrapper API,
+which is C based and allows you to plug in arbitrary
+backends. Multicorn is a Foreign Data Wrapper implementation that
+embeds the Python interpreter and calls Python code. This allows you,
+then, to write your data backend in Python.
 
 The basic Multicorn interface expects you to define functions for
 responding to selects, inserts, updates, and deletes. In addition to
@@ -87,7 +87,7 @@ class SimpleFDW(ForeignDataWrapper):
 
 Running a query on it looks like this:
 
-```
+```sql
 pygoth=> select * from simple;
 NOTICE:  executing simple select
 NOTICE:  col: col2
@@ -105,7 +105,9 @@ qualifiers and columns. Qualifiers are conditions in select
 statements, and `columns` is a list of columns that are required to
 satisfy the select. For example:
 
-  `select foo from bar where qux = 5`
+```sql
+select foo from bar where qux = 5
+```
 
 results in a call to `execute` with a qualifiers list of: `[qux = 5]`,
 and a columns list of: `[foo, qux]`. (That's pseudo-code, not actual
@@ -118,7 +120,7 @@ where each element is a map of column name to value. `SimpleFDW`
 always returns two rows, regardless of what goes into the select
 statement.
 
-```
+```sql
 pygoth=> select * from simple where col2 = 42;
 NOTICE:  executing simple select
 NOTICE:  qual: col2 = 42
@@ -141,14 +143,14 @@ NOTICE:  col: col1
 ```
 
 Note that `execute` is allowed to return *more* data than what might
-be suggested by its qualifiers. Postgres filters down data received
+be suggested by its qualifiers. PostgreSQL filters down data received
 from the FDW to ensure that the output is correct.
 
 
 Not So Simple
 ----
 
-Postgres has an array data type, and Multicorn lets you push Python
+PostgreSQL has an array data type, and Multicorn lets you push Python
 lists in as arrays.
 
 ```python
@@ -181,7 +183,7 @@ class NotSoSimpleFDW(ForeignDataWrapper):
 
 So we can:
 
-```
+```sql
 pygoth=> select * from not_so_simple ;
 NOTICE:  executing not_so_simple select
  id |   col1    |         col2         
@@ -194,7 +196,7 @@ NOTICE:  executing not_so_simple select
 
 You can also search within an array:
 
-```
+```sql
 pygoth=> select * from not_so_simple where 2 = ANY(col1);
 NOTICE:  executing not_so_simple select
  id |   col1    |         col2         
@@ -206,7 +208,7 @@ NOTICE:  executing not_so_simple select
 
 A useful function for arrays is `unnest`, which "explodes" the array:
 
-```
+```sql
 pygoth=> select *, unnest(col1) from not_so_simple;
 NOTICE:  executing not_so_simple select
  id |   col1    |         col2         | unnest 
@@ -226,7 +228,7 @@ One classic example of where NoSQL document stores shine is in
 modeling tags. In traditional SQL, you have to maintain a many-to-many
 relation to properly model tags, but in a document store you can cheat
 and just maintain a list of tags per document. Well, turns out you can
-do this in Postgres with simple arrays.
+do this in PostgreSQL with simple arrays.
 
 
 Log Parsing
@@ -282,7 +284,7 @@ def get_rows(path):
 
 Where `_log_time_to_psql` formats the access log time string in a form
 that
-[Postgres understands](http://www.postgresql.org/docs/9.3/static/datatype-datetime.html):
+[PostgreSQL understands](http://www.postgresql.org/docs/9.3/static/datatype-datetime.html):
 
 ```python
 def _log_time_to_psql(timestr):
@@ -303,7 +305,7 @@ def execute(self, quals, columns):
 
 It's slow though:
 
-```
+```sql
 pygoth=> select count(*) from access_log;
  count  
 --------
@@ -316,7 +318,7 @@ Time: 12232.053 ms
 Also, note that the query essentially does a table scan regardless of
 any qualifiers we add:
 
-```
+```sql
 pygoth=> select count(*) from access_log where error = 404;
  count 
 -------
@@ -345,10 +347,10 @@ def execute(self, quals, columns):
     return self._rows
 ```
 
-The first time we run a select, Postgres instantiates the class and we
-load in all the data:
+The first time we run a select, PostgreSQL instantiates the class and
+we load in all the data:
 
-```
+```sql
 pygoth=> select count(*) from access_log ;
 NOTICE:  caching row data
  count  
@@ -359,11 +361,11 @@ NOTICE:  caching row data
 Time: 11103.197 ms
 ```
 
-But since the Postgres already has an AccessLogFDW instance for this
+But since the PostgreSQL already has an AccessLogFDW instance for this
 connection, the second query comes back much faster. But note that
 we're still doing a full scan on every query.
 
-```
+```sql
 pygoth=> select count(*) from access_log ;
  count  
 --------
@@ -384,7 +386,7 @@ Time: 578.662 ms
 So now that the query isn't excruciatingly slow, we're ready to start
 exploring a bit. What are the top ten paths by count?
 
-```
+```sql
 pygoth=> select path, count(1) as c from access_log group by path order by c desc limit 10;
                     path                    |   c    
 --------------------------------------------+--------
@@ -405,7 +407,7 @@ Time: 653.187 ms
 
 What are the top ten paths by average elapsed time?
 
-```
+```sql
 pygoth=> select path, count(1) as c, avg(elapsed) as e from access_log group by path order by e desc limit 10;
                    path                    | c |   e    
 -------------------------------------------+---+--------
@@ -431,7 +433,7 @@ often. Maybe these are outliers we don't care about at the moment. If
 that's the case, we can drop requests that didn't happen at least 100
 times.
 
-```
+```sql
 pygoth=> select * from (select path, count(1) as c, avg(elapsed) as e from access_log group by path) as temp where c > 100 order by e desc limit 10;
                    path                    |  c   |         e         
 -------------------------------------------+------+-------------------
@@ -483,7 +485,7 @@ def execute(self, quals, columns):
 
 Now queries involving errors are fast:
 
-```
+```sql
 pygoth=> select count(1) from access_log where error = 404;
 NOTICE:  filtering query on error to 404
  count 
@@ -496,6 +498,7 @@ Time: 1.058 ms
 
 What are the paths that produce the most 404s?
 
+```sql
 pygoth=> select path, count(*) as c from (select * from access_log where error = 404) as errors group by path order by c desc limit 10;
 NOTICE:  filtering query on error to 404
                              path                             | c  
@@ -513,6 +516,7 @@ NOTICE:  filtering query on error to 404
 (10 rows)
 
 Time: 2.980 ms
+```
 
 Not surprising, since most of those are invalid paths.
 
@@ -560,7 +564,7 @@ def execute(self, quals, cols):
 
 Let's look up 17620:
 
-```
+```sql
 pygoth=> select * from issues where id = 17620;
 NOTICE:  id = 17620
   id   |                                         summary                                          
@@ -573,7 +577,7 @@ Time: 5997.037 ms
 
 One curiosity:
 
-```
+```sql
 pygoth=> select * from issues ;
  id | summary 
 ----+---------
@@ -589,7 +593,7 @@ listing of all issues.
 Git
 ----
 
-Let's hook Postgres up to a git repo, because why not?
+Let's hook PostgreSQL up to a git repo, because why not?
 
 This one's a bit too complicated to be pasting code snippets into a
 blog post, so I'll just direct you to the source repo containing the
@@ -598,7 +602,7 @@ info from a git mirror of the CPython source.
 
 How many commits are there?
 
-```
+```sql
 pygoth=> select count(*) from cpython_git ;
  count 
 -------
@@ -608,7 +612,7 @@ pygoth=> select count(*) from cpython_git ;
 
 Who commits the most often?
 
-```
+```sql
 pygoth=> select author, count(*) as c from cpython_git  group by author order by c desc limit 10;
       author       |   c   
 -------------------+-------
@@ -629,7 +633,7 @@ Predictable!
 
 How many commits in the last year?
 
-```
+```sql
 pygoth=> select count(*) from cpython_git where time > timestamp 'now' - interval '1 year';
  count 
 -------
@@ -639,7 +643,7 @@ pygoth=> select count(*) from cpython_git where time > timestamp 'now' - interva
 
 And who committed in the last year?
 
-```
+```sql
 pygoth=> select author, count(*) as c from (select * from cpython_git where time > timestamp 'now' - interval '1 year') as last_year group by author order by c desc limit 10;
       author       |  c  
 -------------------+-----
@@ -661,7 +665,7 @@ Tsk, tsk, Guido, what a slacker.
 One thing this FDW does is extract out anything that looks like an
 issue number:
 
-```
+```sql
 pygoth=> select * from cpython_git limit 10;
  githash |      author      |        time         | issues  |                                  summary                                   
 ---------+------------------+---------------------+---------+----------------------------------------------------------------------------
@@ -683,7 +687,7 @@ Time: 0.296 ms
 So now we can ask a questions about issues. Which commits deal with
 the most issues?
 
-```
+```sql
 pygoth=> select * from (select githash, array_length(issues, 1) as c from cpython_git) as counts where c > 0 order by c desc limit 10;
  githash | c 
 ---------+---
@@ -703,7 +707,7 @@ pygoth=> select * from (select githash, array_length(issues, 1) as c from cpytho
 Or better yet, which issues require the most commits? This could be a
 sign that an issue is particularly difficult to resolve.
 
-```
+```sql
 pygoth=> select issue, count(*) as c from (select *, unnest(issues) as issue from cpython_git) as by_issue group by issue order by c desc limit 10;
  issue | c  
 -------+----
@@ -722,7 +726,7 @@ pygoth=> select issue, count(*) as c from (select *, unnest(issues) as issue fro
 
 Issue 18408 looks to be the worst. What is it?
 
-```
+```sql
 pygoth=> select * from issues where id = 18408;
 NOTICE:  id = 18408
   id   |                              summary                              
@@ -795,7 +799,7 @@ transfer rate of around 2 MB/sec, well within the bounds of the network
 card. This is fine for demo purposes, but for a production system
 you'd probably want something that isn't quite as CPU intensive.
 
-Much of the CPU time is spent generating the Postgres formatted
+Much of the CPU time is spent generating the PostgreSQL formatted
 timestamp. This is in general an issue that would need to be addressed
 in a production system -- the amount of time converting between
 different time formats. One trivial way to solve this problem is to
@@ -809,7 +813,7 @@ contents of a click database, and of course the FDW definition in
 
 So let's ask some questions. How many clicks?
 
-```
+```sql
 pygoth=> select count(1) from clicks;
   count  
 ---------
@@ -823,7 +827,7 @@ path performance.)
 
 What about the number of clicks in the last month?
 
-```
+```sql
 pygoth=> select count(1) from clicks where time > timestamp 'now' - interval '1 month';
  count 
 -------
@@ -833,7 +837,7 @@ pygoth=> select count(1) from clicks where time > timestamp 'now' - interval '1 
 
 What are the top pages over the last month by page views?
 
-```
+```sql
 pygoth=> select path, count(1) as c from (select * from clicks where time > timestamp 'now' - interval '2 weeks') as temp group by path order by c desc limit 10;                         
                                 path                                 |   c    
 ---------------------------------------------------------------------+--------
@@ -852,7 +856,7 @@ pygoth=> select path, count(1) as c from (select * from clicks where time > time
 
 Ah, but how does this differ by uniques? One person may visit a page multiple times.
 
-```
+```sql
 pygoth=> select path, count(distinct(uid)) as c from (select * from clicks where time > timestamp 'now' - interval '2 weeks') as temp group by path order by c desc limit 10;             
                                 path                                 |   c   
 ---------------------------------------------------------------------+-------
@@ -873,7 +877,7 @@ You can see that the top pages are roughly the same but become more
 varied the further down in the rankings you go. But what if we ordered
 by total engaged time?
 
-```
+```sql
 pygoth=> select path, sum(et) as c from (select * from clicks where time > timestamp 'now' - interval '2 weeks') as temp group by path order by c desc limit 10;                          
                                 path                                 |    c    
 ---------------------------------------------------------------------+---------
@@ -895,10 +899,10 @@ data set is too small to draw the conclusion that engaged time doesn't
 correlate well with page views or uniques, but we've found that to be
 the case for the larger Internet.
 
-For our final trick, we'll plug our custom FDW with the Postgres HLL
+For our final trick, we'll plug our custom FDW with the PostgreSQL HLL
 extension. First, notice that counting uniques is very expensive:
 
-```
+```sql
 pygoth=> select count(distinct(uid)) from clicks;
   count  
 ---------
@@ -908,10 +912,10 @@ pygoth=> select count(distinct(uid)) from clicks;
 Time: 94295.837 ms
 ```
 
-In order to calcuate this number, Postgres has to build up a structure
-containing all the uid strings and then take that structure's
-cardinatlity. A naive implementation would simply be a map or a
-dictionary.
+In order to calcuate this number, PostgreSQL has to build up a
+structure containing all the uid strings and then take that
+structure's cardinatlity. A naive implementation would simply be a map
+or a dictionary.
 
 HLLs give us a way of calculating sizes of unique sets in a
 probablistic way, using far less space, but at the expense of
@@ -919,12 +923,12 @@ accuracy. A property of the HLL calculation is that it doesn't have to
 compare strings, unlike a map or dictionary structure. Thus insertions
 into the HLL tend to be much faster.
 
-HLLs are not built into Postgres, however Aggregate Knowledge
+HLLs are not built into PostgreSQL, however Aggregate Knowledge
 [released a robust extension](https://github.com/aggregateknowledge/postgresql-hll).
 
 Calculating the total distinct uids works like this:
 
-```
+```sql
 pygoth=> select #hll_add_agg(hll_hash_text(uid)) from clicks;                                                                                                                             
      ?column?     
 ------------------
@@ -937,8 +941,8 @@ Time: 16113.052 ms
 94 seconds versus 16 seconds with about 2% accuracy. The true power of
 HLLs is beyond the scope of this already mammoth post, but the point
 of this exercise is to show that FDWs are a first class citizen in
-Postgres. Whatever user defined functions or modules Postgres supports
-on native tables also works with FDWs.
+PostgreSQL. Whatever user defined functions or modules PostgreSQL
+supports on native tables also works with FDWs.
 
 
 Summary
@@ -948,14 +952,14 @@ At the start of the post, I mentioned that I'd come up with a Big
 Idea, but then discovered that it was wrong. My Big Idea at the time
 was that using knowledge of how data is stored on disk and some fancy
 libraries (LevelDB), you could put together an analytics system with
-Postgres that could beat Postgres itself. This is, in fact, the
+PostgreSQL that could beat PostgreSQL itself. This is, in fact, the
 message of
 [AdRoll's talk](http://tuulos.github.io/sf-python-meetup-sep-2013/#/)
 that inspired my explorations into FDWs, in which they were able to
 cobble together a system that was more performant than Redshift
 (Amazon's very fast column oriented store). I believe this to be true,
 however my example with LevelDB didn't pan out. It turns out that
-ingesting the click data as a native Postgres table results in some
+ingesting the click data as a native PostgreSQL table results in some
 really quick queries on its own, much faster than going through
 Multicorn. This, I believe, has to do with some Python overhead, but
 I'm not entirely sure and have not had time to really delve into
@@ -976,4 +980,4 @@ scales up, seemingly small differences in technology choices compounds
 and can become serious bottlenecks for performance and pain points for
 cost. We're learning to be more nuanced about our tools.
 
-And Postgres FTW.
+And PostgreSQL FTW.
